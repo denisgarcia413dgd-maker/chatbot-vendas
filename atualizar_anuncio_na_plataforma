@@ -1,0 +1,40 @@
+def atualizar_anuncio_na_plataforma(id_anuncio: str, novo_preco: float, pausar: bool = False):
+    """
+    Modifica o preço ou pausa um anúncio real no Mercado Livre 
+    utilizando as credenciais/token do seu aplicativo.
+    """
+    # IMPORTANTE: Substitua pelo seu Access Token real gerado no painel de Developer do Mercado Livre
+    ACCESS_TOKEN = "SEU_ACCESS_TOKEN_AQUI" 
+    
+    url_api = f"https://mercadolibre.com{id_anuncio}"
+    
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
+    # Define o que vai ser alterado dependendo do cenário
+    if pausar:
+        # Se o cenário mudou para pior, mudamos o status do anúncio para "paused"
+        payload = {"status": "paused"}
+        print(f"[Robô] Solicitando pausa do anúncio {id_anuncio} via API...")
+    else:
+        # Se o cenário está seguro/corrigido, atualizamos apenas o preço de venda
+        payload = {"price": novo_preco}
+        print(f"[Robô] Solicitando alteração de preço para R$ {novo_preco} via API...")
+        
+    try:
+        # Envia a atualização em tempo real para os servidores do Mercado Livre
+        resposta = requests.put(url_api, json=payload, headers=headers, timeout=10)
+        
+        if resposta.status_code == 200:
+            print(f"[Sucesso API] Anúncio {id_anuncio} atualizado com sucesso no Mercado Livre!")
+            return True
+        else:
+            print(f"[Erro API] Falha ao atualizar. Código: {resposta.status_code} - Resposta: {resposta.text}")
+            return False
+            
+    except Exception as e:
+        print(f"[Erro Conexão] Não foi possível falar com a API do Mercado Livre: {e}")
+        return False
