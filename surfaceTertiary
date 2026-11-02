@@ -1,0 +1,91 @@
+import React from "react";
+import { View, Text, StyleSheet, FlatList } from "react-native";
+import { useTheme } from "../src/theme";
+
+// Exemplo de dados de logs recebidos do seu backend
+interface LogItem {
+  id: string;
+  timestamp: string;
+  detail: string;
+}
+
+interface TerminalFeedProps {
+  logs: LogItem[];
+}
+
+export default function TerminalFeedLog({ logs }: TerminalFeedProps) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={[styles.terminalContainer, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+      <View style={[styles.terminalHeader, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerText, { color: colors.muted }]}>LIVE LOG FEED — PRECIFICADOR</Text>
+      </View>
+      
+      <FlatList
+        data={logs}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => {
+          // Detecta palavras-chave de risco para aplicar a cor sem quebrar o layout limpo
+          const isCritico = item.detail.includes("CRÍTICO") || item.detail.includes("ALERTA");
+          
+          return (
+            <View style={styles.logRow}>
+              <Text style={[styles.timestamp, { color: colors.muted }]}>[{item.timestamp}]</Text>
+              <Text 
+                style={[
+                  styles.logText, 
+                  { color: isCritico ? colors.error : colors.onSurfaceSecondary }
+                ]}
+              >
+                {item.detail}
+              </Text>
+            </View>
+          );
+        }}
+        contentContainerStyle={styles.scrollContent}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  terminalContainer: {
+    height: 250,
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: "hidden",
+    marginTop: 12,
+    width: "100%",
+  },
+  terminalHeader: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+  },
+  headerText: {
+    fontSize: 10,
+    fontFamily: "Rajdhani", // Fonte técnica definida pelas diretrizes de design
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  scrollContent: {
+    padding: 8,
+  },
+  logRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginVertical: 2,
+  },
+  timestamp: {
+    fontSize: 12,
+    fontFamily: "Rajdhani",
+    marginRight: 6,
+  },
+  logText: {
+    fontSize: 12,
+    fontFamily: "Rajdhani",
+    flex: 1,
+    lineHeight: 15,
+  },
+});
