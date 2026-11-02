@@ -1,0 +1,8 @@
+from pydantic import BaseModel, HttpUrl
+
+class ProdutoMonitorado(BaseModel):
+    id_anuncio_meu: str       # ID do seu anúncio criado (ex: MLB987654321)
+    id_fornecedor: str        # ID do anúncio do concorrente/fornecedor (ex: MLB12345678)
+    link_fornecedor: str      # URL completa do fornecedor
+    preco_custo_original: float # O preço que o fornecedor cobrava no dia da clonagem
+    markup: float              # Margem multiplicadora de lucro
