@@ -1,0 +1,136 @@
+import React, { useState } from "react";
+import { View, Text, StyleSheet, Pressable, TextInput } from "react-native";
+import { useTheme } from "../src/theme";
+
+export default function MercadoLivreCard() {
+  const { colors } = useTheme();
+  const [conectado, setConectado] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+
+  const handleSalvar = () => {
+    if (clientId && clientSecret) {
+      setConectado(true);
+      // Aqui você dispararia o fetch para a API do seu backend
+    }
+  };
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+      {/* Cabeçalho do Card Tático */}
+      <View style={styles.row}>
+        <View style={[styles.avatarContainer, { backgroundColor: colors.brandTertiary }]}>
+          <Text style={[styles.avatarText, { color: colors.onBrandTertiary }]}>ML</Text>
+        </View>
+        
+        <View style={styles.infoContainer}>
+          <Text style={[styles.title, { color: colors.onSurface }]}>Mercado Livre</Text>
+          <View style={[styles.badge, { backgroundColor: conectado ? colors.success : colors.surfaceTertiary }]}>
+            <Text style={[styles.badgeText, { color: conectado ? colors.onSuccess : colors.muted }]}>
+              {conectado ? "CONECTADO" : "DESCONECTADO"}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Formulário de Configuração Limpo e Denso */}
+      <View style={styles.form}>
+        <TextInput
+          placeholder="Client ID"
+          placeholderTextColor={colors.muted}
+          value={clientId}
+          onChangeText={setClientId}
+          style={[styles.input, { backgroundColor: colors.surfaceTertiary, color: colors.onSurface, borderColor: colors.border }]}
+        />
+        <TextInput
+          placeholder="Client Secret"
+          placeholderTextColor={colors.muted}
+          secureTextEntry
+          value={clientSecret}
+          onChangeText={setClientSecret}
+          style={[styles.input, { backgroundColor: colors.surfaceTertiary, color: colors.onSurface, borderColor: colors.border }]}
+        />
+        
+        <Pressable 
+          onPress={handleSalvar}
+          style={({ pressed }) => [
+            styles.button, 
+            { backgroundColor: colors.brandPrimary, opacity: pressed ? 0.8 : 1 }
+          ]}
+        >
+          <Text style={[styles.buttonText, { color: colors.onBrandPrimary }]}>
+            SALVAR CONFIGURAÇÕES
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginVertical: 6,
+    width: "100%",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  avatarContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  infoContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  form: {
+    width: "100%",
+  },
+  input: {
+    height: 38,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  button: {
+    height: 38,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  buttonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+});
