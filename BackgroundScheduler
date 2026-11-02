@@ -1,0 +1,30 @@
+import uvicorn
+from fastapi import FastAPI
+from apscheduler.schedulers.background import BackgroundScheduler
+import apirouterpost
+
+app = FastAPI(
+    title="Robô Inteligente de Dropshipping",
+    description="Monitoramento de cenário automático e clonagem inteligente por categoria"
+)
+
+app.include_router(apirouterpost.router)
+
+# Inicializa o Timer (Scheduler) em segundo plano
+scheduler = BackgroundScheduler()
+
+# Configura o robô para executar a verificação de hora em hora (1 hora = 3600 segundos)
+# Para testar imediatamente, você pode mudar 'hours=1' para 'seconds=30'
+scheduler.add_job(apirouterpost.rotina_auditoria_de_cenario, 'interval', hours=1)
+scheduler.start()
+
+@app.get("/")
+async def raiz():
+    return {"mensagem": "Robô ativo. O Timer de auditoria está rodando silenciosamente a cada 1 hora."}
+
+@app.on_event("shutdown")
+def desligar_scheduler():
+    scheduler.shutdown()
+
+if __name__ == "__main__":
+    uvicorn.run("aplicativo:app", host="127.0.0.1", port=8000, reload=True)
