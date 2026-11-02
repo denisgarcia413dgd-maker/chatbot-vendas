@@ -1,0 +1,10 @@
+MONGO_URL="mongodb://localhost:27017"
+DB_NAME="test_database"
+
+# Configurações Shopee
+SHOPEE_PARTNER_ID="seu_id"
+SHOPEE_PARTNER_KEY="sua_chave"
+
+# Novas Configurações Mercado Livre
+MERCADOLIVRE_CLIENT_ID="seu_client_id_aqui"
+MERCADOLIVRE_CLIENT_SECRET="seu_client_secret_aqui"
