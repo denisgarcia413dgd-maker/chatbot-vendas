@@ -1,0 +1,60 @@
+# Modelos para simular a chegada de uma venda via Webhook da plataforma
+class DeliveryAddress(BaseModel):
+    street: str
+    number: str
+    city: str
+    state: str
+    zip_code: str
+    recipient_name: str
+    cpf: str
+
+class OrderWebhookInput(BaseModel):
+    resource_id: str                 # ID do pedido na plataforma de venda (Ex: Mercado Livre)
+    topic: str                       # Tópico da notificação (Ex: "orders")
+    status: str                      # Status do pagamento (Ex: "paid")
+    item_id: str                     # ID do produto que foi vendido
+    quantity: int
+    shipping_address: DeliveryAddress
+
+@api_router.post("/webhook/venda-notificada")
+async def receber_e_processar_venda(notificacao: OrderWebhookInput):
+    # 1. Filtra apenas pedidos cujo pagamento foi devidamente confirmado e aprovado
+    if notificacao.status != "paid":
+        return {"status": "ignored", "message": "Apenas notificações de pagamento aprovado são processadas."}
+        
+    # 2. Busca o vínculo do produto no seu banco de dados para localizar o link do fornecedor original
+    produto_vinculado = await db.products.find_one({"id_interno": notificacao.item_id})
+    if not produto_vinculado:
+        # Se não achar por ID interno, tenta buscar pelo ID remoto da plataforma
+        produto_vinculado = await db.products.find_one({"remote_id": notificacao.item_id})
+        
+    if not produto_vinculado:
+        raise HTTPException(status_code=404, detail="Produto vendido não encontrado no mapeamento do robô.")
+        
+    link_fornecedor = produto_vinculado.get("link_fornecedor")
+    
+    # 3. Estrutura a ordem de compra automática que será enviada para o robô de clique (Fulfillment)
+    ordem_envio_fornecedor = {
+        "id_venda_origem": notificacao.resource_id,
+        "link_compra_fornecedor": link_fornecedor,
+        "quantidade": notificacao.quantity,
+        "dados_cliente_final": notificacao.shipping_address.dict(),
+        "status_automacao": "Pendente - Pronto para Envio Automático",
+        "data_captura": datetime.now(timezone.utc)
+    }
+    
+    # Registra o pedido no MongoDB para o robô de automação de navegador (ex: Playwright) executar a compra
+    await db.orders.insert_one(ordem_envio_fornecedor)
+    
+    # 4. Envia o alerta de sucesso tático em tempo real para o log do celular
+    await db.status_checks.insert_one({
+        "client_name": "Robô Despachante",
+        "timestamp": datetime.now(timezone.utc),
+        "detail": f"VENDA DETECTADA: Pedido {notificacao.resource_id} interceptado. Dados de {notificacao.shipping_address.recipient_name} salvos para envio automático."
+    })
+    
+    return {
+        "status": "success",
+        "message": "Fulfillment iniciado. Dados encaminhados para a fila de compras do fornecedor.",
+        "order_id": notificacao.resource_id
+    }
