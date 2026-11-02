@@ -1,0 +1,70 @@
+import httpx
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from datetime import datetime, timezone
+import re
+
+# Modelo de entrada para o robô iniciar o processo
+class RobotImportConfig(BaseModel):
+    product_url: str                 # Link do produto na plataforma fornecedora (Ex: Shopee/AliExpress)
+    margem_desejada_porcentagem: float # Ex: 30 para 30% de lucro bruto
+    taxa_venda_porcentagem: float    # Ex: 11.5 (Taxa de comissão do Mercado Livre)
+
+# Função simuladora de Web Scraping/Parsing do Link do fornecedor
+async def extrair_dados_fornecedor(url: str):
+    # Em produção, você usaria BeautifulSoup, Playwright ou a API interna da plataforma de origem
+    # Aqui simulamos uma resposta capturada com sucesso via requisição tática
+    if "partner.shop" in url or "shopee" in url or "aliexpress" in url:
+        return {
+            "title": "Robô Aspirador Inteligente Tactical V1",
+            "cost_price": 120.00, # Preço de custo na plataforma de origem
+            "stock": 45,
+            "image_url": "https://pexels.com",
+            "origin_platform_id": "PROD_998231"
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Plataforma de origem de link não suportada pelo robô.")
+
+@api_router.post("/robot/importar-e-vender")
+async def robo_importar_e_vender(config: RobotImportConfig):
+    # Passo 1: O robô acessa o link e extrai as informações de custo
+    dados_origem = await extrair_dados_fornecedor(config.product_url)
+    custo = dados_origem["cost_price"]
+    
+    # Passo 2: Aplica a fórmula matemática de cálculo de margem maior para lucro líquido
+    preco_com_margem = custo * (1 + (config.margem_desejada_porcentagem / 100))
+    taxa_fixa = 6.00 if preco_com_margem < 79.00 else 0.00
+    fator_plataforma = 1 - (config.taxa_venda_porcentagem / 100)
+    
+    preco_venda_final = round((preco_com_margem + taxa_fixa) / fator_plataforma, 2)
+    
+    # Passo 3: Salva o vínculo no banco MongoDB para o monitoramento automático do robô
+    novo_produto_arbitragem = {
+        "id_interno": str(uuid.uuid4()),
+        "titulo": dados_origem["title"],
+        "link_fornecedor": config.product_url,
+        "preco_custo_fornecedor": custo,
+        "preco_venda_anuncio": preco_venda_final,
+        "estoque_sincronizado": dados_origem["stock"],
+        "status_automacao": "Ativo - Monitorando",
+        "last_check": datetime.now(timezone.utc)
+    }
+    
+    await db.products.update_one(
+        {"link_fornecedor": config.product_url},
+        {"$set": novo_produto_arbitragem},
+        upsert=True
+    )
+    
+    # Passo 4: Envia comando de log em tempo real para o Terminal tático do celular
+    await db.status_checks.insert_one({
+        "client_name": "Robô Minerador",
+        "timestamp": datetime.now(timezone.utc),
+        "detail": f"PRODUTO ARBITRADO: {dados_origem['title'][:15]}... Link Fornecedor linkado. Preço de venda: R$ {preco_venda_final}"
+    })
+    
+    return {
+        "status": "success",
+        "mensagem": "Produto analisado, precificado e pronto para venda automática.",
+        "dados_anuncio": novo_produto_arbitragem
+    }
