@@ -1,0 +1,34 @@
+# Modelo para receber os parâmetros de cálculo da requisição
+class FormulaConfig(BaseModel):
+    margem_lucro_porcentagem: float  # Ex: 20 para 20%
+    taxa_comissao_porcentagem: float # Ex: 11.5 para 11.5% do anúncio Clássico ML
+    custo_produto: float             # Custo que você paga ao fornecedor
+
+@api_router.post("/mercadolivre/calcular-preco-sugerido")
+async def calcular_preco_sugerido(config: FormulaConfig):
+    # 1. Aplica a margem de lucro desejada sobre o custo base
+    preco_com_margem = config.custo_produto * (1 + (config.margem_lucro_porcentagem / 100))
+    
+    # 2. Define a taxa fixa do Mercado Livre (Produtos abaixo de R$ 79 custam R$ 6,00 adicionais por unidade)
+    # Nota: O Mercado Livre atualiza esse limite/taxa periodicamente, mas a regra base permanece
+    taxa_fixa_unidade = 6.00 if preco_com_margem < 79.00 else 0.00
+    
+    # 3. Calcula o preço final ajustando a comissão cobrada sobre a venda total da plataforma
+    # Fórmula matemática para repassar a taxa da plataforma sem perder margem:
+    fator_plataforma = 1 - (config.taxa_comissao_porcentagem / 100)
+    
+    if fator_plataforma <= 0:
+        raise HTTPException(status_code=400, detail="Porcentagem de taxa da plataforma inválida.")
+        
+    preco_final_sugerido = (preco_com_margem + taxa_fixa_unidade) / fator_plataforma
+    
+    # Recalcula caso o preço final ultrapasse a barreira dos R$ 79 e elimine a taxa fixa
+    if preco_final_sugerido >= 79.00 and taxa_fixa_unidade > 0:
+        preco_final_sugerido = preco_com_margem / fator_plataforma
+
+    return {
+        "custo_base": config.custo_produto,
+        "taxa_fixa_aplicada": taxa_fixa_unidade,
+        "preco_final_sugerido": round(preco_final_sugerido, 2),
+        "lucro_liquido_estimado": round(preco_final_sugerido - config.custo_produto - taxa_fixa_unidade - (preco_final_sugerido * (config.taxa_comissao_porcentagem / 100)), 2)
+    }
