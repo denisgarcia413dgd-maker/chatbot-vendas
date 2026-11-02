@@ -1,0 +1,45 @@
+# Rota que pode ser engatada em um agendador de tarefas (como Celery, APScheduler ou um loop cron)
+@api_router.post("/robot/sincronizar-estoque-fornecedores")
+async def verificar_estoque_em_massa():
+    # Recupera todos os produtos ativos do seu ecossistema
+    produtos_cadastrados = await db.products.find({"status_automacao": "Ativo - Monitorando"}).to_list(1000)
+    produtos_pausados = 0
+    produtos_verificados = 0
+    
+    for produto in produtos_cadastrados:
+        produtos_verificados += 1
+        link = produto.get("link_fornecedor")
+        
+        # Simula o robô fazendo o scraping tático em tempo real do estoque do parceiro na origem
+        # Em produção, aqui rodaria a função 'extrair_dados_fornecedor(link)'
+        estoque_atual_fornecedor = 0 if "esgotar" in link else 15  # Simulação tática de teste
+        
+        if estoque_atual_fornecedor == 0:
+            # 1. Altera o status no banco local
+            await db.products.update_one(
+                {"_id": produto["_id"]},
+                {"$set": {"status_automacao": "Pausado - Sem Estoque no Fornecedor", "estoque_sincronizado": 0}}
+            )
+            
+            # 2. Comando tático: Aqui o robô dispara a chamada de API para o Mercado Livre/Shopee mudando o status do anúncio para 'paused'
+            # Ex: await pausar_anuncio_remoto(produto.get('remote_id'))
+            produtos_pausados += 1
+            
+            # 3. Alerta imediato no feed do terminal do seu celular
+            await db.status_checks.insert_one({
+                "client_name": "Robô Guardião",
+                "timestamp": datetime.now(timezone.utc),
+                "detail": f"⚠️ ANÚNCIO PAUSADO: Fornecedor zerou estoque de '{produto.get('titulo')[:15]}...'. Evitado pedido sem estoque."
+            })
+        else:
+            # Atualiza o último horário de checagem bem-sucedida
+            await db.products.update_one(
+                {"_id": produto["_id"]},
+                {"$set": {"estoque_sincronizado": estoque_atual_fornecedor, "last_check": datetime.now(timezone.utc)}}
+            )
+            
+    return {
+        "status": "success",
+        "total_verificado": produtos_verificados,
+        "total_pausados_por_seguranca": productos_pausados
+    }
