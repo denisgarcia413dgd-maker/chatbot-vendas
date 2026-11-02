@@ -1,0 +1,51 @@
+import httpx
+from fastapi import HTTPException
+
+# Função auxiliar para renovar o Access Token do Mercado Livre usando o Client ID e Secret
+async def obter_token_mercado_livre():
+    # Busca as credenciais salvas no banco MongoDB
+    config = await db.integrations.find_one({"platform": "mercadolivre"})
+    if not config:
+        raise HTTPException(status_code=400, detail="Integração do Mercado Livre não configurada.")
+    
+    url = "https://mercadolibre.com"
+    headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": config["client_id"],
+        "client_secret": config["client_secret"]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, data=data)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Falha na autenticação com Mercado Livre.")
+        return response.json().get("access_token")
+
+# Rota para aplicar o preço sugerido pelo robô diretamente no Mercado Livre
+@api_router.post("/mercadolivre/atualizar-preco/{item_id}")
+async def atualizar_preco_meli(item_id: str, novo_preco: float):
+    token = await obter_token_mercado_livre()
+    
+    url = f"https://mercadolibre.com{item_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    # O Mercado Livre exige apenas o campo que mudou no corpo do PUT
+    payload = {"price": novo_preco}
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.put(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            return {"status": "error", "code": response.status_code, "detail": response.text}
+        
+        # Registrar ação no banco de dados para alimentar o feed do Painel tático
+        await db.status_checks.insert_one({
+            "client_name": "Robô Precificador",
+            "timestamp": datetime.now(timezone.utc),
+            "detail": f"ML: Item {item_id} atualizado para R$ {novo_preco:.2f}"
+        })
+        
+        return {"status": "success", "message": f"Preço atualizado para R$ {novo_preco}"}
