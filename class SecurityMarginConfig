@@ -1,0 +1,73 @@
+# Modelo para receber a checagem de margem crítica
+class SecurityMarginConfig(BaseModel):
+    margem_minima_seguranca: float  # Ex: 5.0 para 5% de margem real mínima tolerada
+
+@api_router.get("/mercadolivre/sincronizar-produtos")
+async def sincronizar_e_monitorar_produtos(margem_critica: float = 5.0):
+    token = await obter_token_mercado_livre()
+    
+    # 1. Busca os IDs dos produtos do usuário no Mercado Livre
+    # Nota: Em produção, substitua 'me' pelo ID do usuário ou use os parâmetros de busca corretos
+    url_busca = "https://mercadolibre.com"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    async with httpx.AsyncClient() as client:
+        res_busca = await client.get(url_busca, headers=headers)
+        if res_busca.status_code != 200:
+            raise HTTPException(status_code=res_busca.status_code, detail="Erro ao buscar lista de produtos.")
+        
+        item_ids = res_busca.json().get("results", [])
+        if not item_ids:
+            return {"status": "success", "produtos_analisados": 0, "mensagem": "Nenhum produto encontrado."}
+        
+        # 2. Busca os detalhes de cada produto (Preço Atual e Custo guardado localmente)
+        ids_param = ",".join(item_ids[:20]) # Limitando a 20 para exemplo de requisição em lote
+        url_detalhes = f"https://mercadolibre.com{ids_param}"
+        
+        res_detalhes = await client.get(url_detalhes, headers=headers)
+        if res_detalhes.status_code != 200:
+            raise HTTPException(status_code=res_detalhes.status_code, detail="Erro ao coletar dados dos produtos.")
+        
+        itens_resposta = res_detalhes.json()
+        produtos_analisados = []
+        
+        for item_wrapper in itens_resposta:
+            body = item_wrapper.get("body", {})
+            item_id = body.get("id")
+            preco_atual = body.get("price", 0.0)
+            titulo = body.get("title", "Produto sem título")
+            
+            # Recupera o custo do produto que você registrou no seu banco local do robô
+            produto_local = await db.products.find_one({"remote_id": item_id})
+            custo_base = produto_local.get("cost", 0.0) if produto_local else (preco_atual * 0.5) # Fallback de 50% para simulação
+            
+            # 3. Análise da Regra de Margem de Segurança
+            # Exemplo simplificado de cálculo de margem atual considerando taxas fixas básicas
+            taxa_fixa = 6.00 if preco_atual < 79.00 else 0.0
+            taxa_comissao = preco_atual * 0.115 # Base 11.5% clássico
+            lucro_atual_real = preco_atual - custo_base - taxa_fixa - taxa_comissao
+            margem_atual_porcentagem = (lucro_atual_real / preco_atual) * 100 if preco_atual > 0 else 0
+            
+            status_seguranca = "OK"
+            if margem_atual_porcentagem < margem_critica:
+                status_seguranca = "CRÍTICO"
+                # Registra um log de atenção máxima direto para o terminal do painel
+                await db.status_checks.insert_one({
+                    "client_name": "Robô Precificador",
+                    "timestamp": datetime.now(timezone.utc),
+                    "detail": f"ALERTA CRÍTICO: Margem de '{titulo[:15]}...' está em {margem_atual_porcentagem:.1f}%! Risco de prejuízo."
+                })
+            
+            produtos_analisados.append({
+                "id": item_id,
+                "titulo": titulo,
+                "preco_atual": preco_atual,
+                "margem_real": round(margem_atual_porcentagem, 2),
+                "status": status_seguranca
+            })
+            
+        return {
+            "status": "success",
+            "total_analisado": len(produtos_analisados),
+            "produtos": produtos_analisados
+        }
