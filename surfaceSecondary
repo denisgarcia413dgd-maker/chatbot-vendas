@@ -1,0 +1,185 @@
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TextInput, ScrollView, Pressable } from "react-native";
+import { useTheme } from "../src/theme";
+
+export default function TelaConfiguracaoLucro() {
+  const { colors } = useTheme();
+  
+  // Estados do formulário denso
+  const [margem, setMargem] = useState("20");
+  const [comissao, setComissao] = useState("11.5");
+  const [custoExemplo, setCustoExemplo] = useState("50.00");
+  
+  // Resultados da simulação em tempo real
+  const [precoFinal, setPrecoFinal] = useState(0);
+  const [taxaFixa, setTaxaFixa] = useState(0);
+
+  // Calcula em tempo real no dispositivo para manter o dinamismo sem travamento
+  useEffect(() => {
+    const c = parseFloat(custoExemplo) || 0;
+    const m = parseFloat(margem) || 0;
+    const t = parseFloat(comissao) || 0;
+
+    const precoComMargem = c * (1 + m / 100);
+    const fixa = precoComMargem < 79 ? 6.00 : 0;
+    const fator = 1 - t / 100;
+    
+    let resultado = (precoComMargem + fixa) / (fator > 0 ? fator : 1);
+    if (resultado >= 79 && fixa > 0) {
+      resultado = precoComMargem / (fator > 0 ? fator : 1);
+    }
+    
+    setPrecoFinal(resultado);
+    setTaxaFixa(resultado < 79 ? 6.00 : 0);
+  }, [margem, comissao, custoExemplo]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.surface }]}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Configuração de Margem</Text>
+        
+        {/* Entradas de Dados */}
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: colors.onSurfaceSecondary }]}>Margem de Lucro Alvo (%)</Text>
+          <TextInput
+            value={margem}
+            onChangeText={setMargem}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: colors.surfaceTertiary, color: colors.onSurface, borderColor: colors.border }]}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: colors.onSurfaceSecondary }]}>Comissão do Anúncio ML (%)</Text>
+          <TextInput
+            value={comissao}
+            onChangeText={setComissao}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: colors.surfaceTertiary, color: colors.onSurface, borderColor: colors.border }]}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: colors.onSurfaceSecondary }]}>Custo de Teste do Produto (R$)</Text>
+          <TextInput
+            value={custoExemplo}
+            onChangeText={setCustoExemplo}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: colors.surfaceTertiary, color: colors.onSurface, borderColor: colors.border }]}
+          />
+        </View>
+
+        {/* Card Tático do Demonstrativo Financeiro */}
+        <View style={[styles.previewCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <Text style={[styles.previewTitle, { color: colors.brandSecondary }]}>CALCULADORA DE EXEMPLO</Text>
+          
+          <View style={styles.row}>
+            <Text style={{ color: colors.onSurfaceSecondary }}>Custo Base:</Text>
+            <Text style={{ color: colors.onSurface, fontWeight: "600" }}>R$ {parseFloat(custoExemplo || "0").toFixed(2)}</Text>
+          </View>
+          
+          <View style={styles.row}>
+            <Text style={{ color: colors.onSurfaceSecondary }}>Taxa Fixa ML (&lt; R$79):</Text>
+            <Text style={{ color: taxaFixa > 0 ? colors.warning : colors.muted }}>R$ {taxaFixa.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.row}>
+            <Text style={{ color: colors.onSurfaceSecondary }}>Comissão Proporcional:</Text>
+            <Text style={{ color: colors.error }}>R$ {(precoFinal * (parseFloat(comissao) / 100) || 0).toFixed(2)}</Text>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+
+          <View style={styles.row}>
+            <Text style={[styles.finalLabel, { color: colors.onSurface }]}>Preço Sugerido Final:</Text>
+            <Text style={[styles.finalPrice, { color: colors.success }]}>R$ {precoFinal.toFixed(2)}</Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Botão de Ação Primário fixado na base */}
+      <View style={[styles.buttonContainer, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
+        <Pressable style={[styles.saveButton, { backgroundColor: colors.brandPrimary }]}>
+          <Text style={[styles.saveButtonText, { color: colors.onBrandPrimary }]}>SALVAR CONFIGURAÇÕES</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100, // Espaço seguro para o botão fixo
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  input: {
+    height: 42,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  previewCard: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginVertical: 4,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 10,
+  },
+  finalLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  finalPrice: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  buttonContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    borderTopWidth: 1,
+  },
+  saveButton: {
+    height: 46,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+});
