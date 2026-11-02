@@ -1,0 +1,110 @@
+from fastapi import APIRouter, HTTPException
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+
+# Reutilizando o router que você já possui no projeto
+router = APIRouter(prefix="/vendas", tags=["Automacao"])
+
+# Chave de acesso da sua conta de vendedor (Gere no painel de desenvolvedor do ML)
+ACCESS_TOKEN = "SEU_ACCESS_TOKEN_REAL_AQUI"
+
+def extrair_dados_completos_origem(url: str) -> dict:
+    """
+    Acessa o link do Mercado Livre de origem e raspa todas as informações
+    necessárias para criar um novo anúncio idêntico.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resposta = requests.get(url, headers=headers, timeout=10)
+        if resposta.status_code != 200:
+            raise ValueError("Não foi possível acessar o produto de origem.")
+            
+        soup = BeautifulSoup(resposta.text, 'html.parser')
+        dados_produto = {}
+
+        # 1. Extrai o Título
+        titulo_tag = soup.find('h1', {'class': re.compile(r'.*ui-pdp-title.*')})
+        dados_produto['titulo'] = titulo_tag.get_text().strip() if titulo_tag else "Produto Importado Sem Título"
+
+        # 2. Extrai o Preço de Custo Original
+        meta_price = soup.find('meta', {'property': 'item-price'}) or soup.find('meta', {'itemprop': 'price'})
+        if not meta_price:
+            raise ValueError("Preço de custo original não localizado.")
+        dados_produto['preco_custo'] = float(meta_price['content'])
+
+        # 3. Extrai os links das fotos (Pega as imagens principais exibidas no carrossel)
+        fotos = []
+        img_tags = soup.find_all('img', {'class': re.compile(r'.*ui-pdp-gallery__figure__image.*')})
+        for img in img_tags:
+            url_foto = img.get('data-zoom') or img.get('src')
+            if url_foto and url_foto not in fotos:
+                fotos.append(url_foto)
+        
+        # Garante pelo menos uma foto padrão caso a raspagem falhe
+        dados_produto['fotos'] = fotos if fotos else ["https://mlstatic.com"]
+
+        return dados_produto
+
+    except Exception as e:
+        raise RuntimeError(f"Erro na raspagem: {str(e)}")
+
+
+@router.post("/clonar-e-anunciar")
+async def clonar_e_anunciar(link_origem: str, markup: float):
+    """
+    Endpoint que recebe o link do fornecedor, raspa os dados, 
+    altera o preço com o markup e cria o anúncio na sua conta.
+    """
+    print(f"\n[Robô] Iniciando clonagem do link: {link_origem}")
+    
+    # 1. Copiar dados do produto original
+    try:
+        dados_origem = extrair_dados_completos_origem(link_origem)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 2. Alterar o valor (Calcula o preço de revenda)
+    preco_revenda = round(dados_origem['preco_custo'] * markup, 2)
+    print(f"[Robô] Produto clonado: '{dados_origem['titulo']}'")
+    print(f"[Robô] Valor de Custo: R$ {dados_origem['preco_custo']} | Novo Valor de Revenda: R$ {preco_revenda}")
+
+    # 3. Preparar a estrutura que a API do Mercado Livre exige para novos anúncios
+    payload_novo_anuncio = {
+        "title": dados_origem['titulo'][:60], # O Mercado Livre limita títulos a 60 caracteres
+        "category_id": "MLB1051",            # Categoria genérica (O ideal é mapear dinamicamente depois)
+        "price": preco_revenda,
+        "currency_id": "BRL",
+        "available_quantity": 10,            # Estoque padrão fictício que seu fornecedor possui
+        "buying_mode": "buy_now",
+        "listing_type_id": "bronze",         # Tipo de anúncio (Ex: bronze = Clássico, gold_pro = Premium)
+        "condition": "new",
+        "pictures": [{"source": url} for url in dados_origem['fotos'][:5]] # Copia até 5 fotos enviando os links
+    }
+
+    # 4. Enviar para a sua conta via API Oficial do Mercado Livre
+    url_api_ml = "https://mercadolibre.com"
+    headers_api = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    resposta_api = requests.post(url_api_ml, json=payload_novo_anuncio, headers=headers_api, timeout=10)
+
+    if resposta_api.status_code == 201:
+        dados_resposta = resposta_api.json()
+        print(f"[Sucesso] Anúncio criado na sua conta! ID: {dados_resposta['id']}")
+        return {
+            "status": "sucesso",
+            "mensagem": "Produto copiado, precificado e anunciado com sucesso!",
+            "id_novo_anuncio": dados_resposta['id'],
+            "link_novo_anuncio": dados_resposta['permalink'],
+            "preco_venda_definido": preco_revenda
+        }
+    else:
+        print(f"[Erro API ML] Falha ao publicar anúncio: {resposta_api.text}")
+        raise HTTPException(status_code=resposta_api.status_code, detail=f"Erro no Mercado Livre: {resposta_api.text}")
