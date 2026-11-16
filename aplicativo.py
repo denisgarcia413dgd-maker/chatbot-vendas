@@ -2,6 +2,7 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import vendas
 
 app = FastAPI(
@@ -9,7 +10,6 @@ app = FastAPI(
     description="Sistema de monitoramento de cenário e automação para Marketplaces"
 )
 
-# Libera o acesso para a tela do aplicativo no seu Samsung A12
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,14 +17,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclui as rotas inteligentes do arquivo vendas.py
 app.include_router(vendas.router)
 
 @app.get("/")
 async def raiz():
-    return {"mensagem": "Robô online no Samsung A12!"}
+    return FileResponse("index.html")
 
 if __name__ == "__main__":
     porta = int(os.environ.get("PORT", 8000))
     uvicorn.run("aplicativo:app", host="0.0.0.0", port=porta)
+
 
