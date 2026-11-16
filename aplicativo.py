@@ -6,8 +6,8 @@ from fastapi.responses import FileResponse
 import vendas
 
 app = FastAPI(
-    title="Robô Inteligente de Dropshipping",
-    description="Sistema de monitoramento de cenário e automação para Marketplaces"
+    title="Robo Inteligente de Dropshipping",
+    description="Sistema de monitoramento de cenario e automacao para Marketplaces"
 )
 
 app.add_middleware(
