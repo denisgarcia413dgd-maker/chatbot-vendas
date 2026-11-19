@@ -1,128 +1,155 @@
 import re
 import json
+import os
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, HttpUrl
+from motor.motor_asyncio import AsyncIOMotorClient
 import requests
 from bs4 import BeautifulSoup
 from medico import chamar_medico_claude
 
-# Modelos para simular a chegada de uma venda via Webhook
+# --- BANCO ---
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+client = AsyncIOMotorClient(MONGO_URI)
+db = client["robo_dropshipping"]
 
-router = APIRouter(prefix="/vendas", tags=["Automacao"])
+api_router = APIRouter()
+router = api_router
 
+# --- MODELOS WEBHOOK ---
+class DeliveryAddress(BaseModel):
+    street: str
+    number: str
+    city: str
+    state: str
+    zip_code: str
+    recipient_name: str
+    cpf: str
+
+class OrderWebhookInput(BaseModel):
+    resource_id: str
+    topic: str
+    status: str
+    item_id: str
+    quantity: int
+    shipping_address: DeliveryAddress
+
+# --- MODELO QUE FALTAVA ---
+class ProdutoMonitorado(BaseModel):
+    id_anuncio_meu: str
+    link_fornecedor: HttpUrl
+    preco_custo_atual: float
+    markup: float = 1.6
+
+# --- FUNCAO 1: EXTRAIR PRECO ---
 def extrair_preco_atual_fornecedor(url: str) -> float:
-    """
-    Acessa o link do Mercado Livre, extrai o preço real do produto
-    e verifica se o anúncio está ativo.
-    """
-    # Headers para simular um navegador comum e evitar bloqueios básicos
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
     }
-    
     try:
         resposta = requests.get(url, headers=headers, timeout=10)
-        
-        # Se o link mudou ou o produto sumiu (Erro 404), o cenário é crítico
-            if not produto_vinculado:
-        # Chama o medico, sem mandar CPF ou nome do cliente
-        diagnostico = chamar_medico_claude(
-            tipo_erro="Produto nao encontrado",
-            detalhe_erro=f"item_id={notificacao.item_id} nao achado em products",
-            onde_aconteceu="vendas.py - receber_e_processar_venda"
-        )
-        await db.status_checks.insert_one({
-            "client_name": "Medico Claude",
-            "timestamp": datetime.now(timezone.utc),
-            "detail": f"DIAGNOSTICO: {diagnostico}"
-        })
-        raise HTTPException(status_code=404, detail="Produto vendido não encontrado no mapeamento do robô.")
-            
-        soup = BeautifulSoup(resposta.text, 'html.parser')
-        
-        # 1. Verifica se o anúncio está pausado/esgotado na página
-        botao_comprar = soup.find('button', {'class': re.compile(regex_match:=r'.*ui-pdp-actions__button.*')})
-        texto_pagina = soup.get_text().lower()
-        if "anúncio pausado" in texto_pagina or "último disponível" not in texto_pagina and not botao_comprar:
-            raise ValueError("Estoque zerado ou anúncio pausado no fornecedor.")
+        if resposta.status_code == 404:
+            raise ValueError("Link do fornecedor nao existe mais - 404")
 
-        # 2. Busca o preço estruturado dentro da tag meta (padrão do Mercado Livre)
+        soup = BeautifulSoup(resposta.text, 'html.parser')
+        texto_pagina = soup.get_text().lower()
+
+        # CORRIGIDO: sem walrus, sem re.compile quebrado
+        botao_comprar = soup.find('button', class_=re.compile(r'.*ui-pdp-actions__button.*'))
+        if "anuncio pausado" in texto_pagina or ("ultimo disponivel" not in texto_pagina and not botao_comprar):
+            raise ValueError("Estoque zerado ou anuncio pausado no fornecedor.")
+
         meta_price = soup.find('meta', {'property': 'item-price'}) or soup.find('meta', {'itemprop': 'price'})
         if meta_price and meta_price.get('content'):
             return float(meta_price['content'])
-            
-        # 3. Fallback: Se não achar na tag meta, busca no JSON estruturado da página (Schema.org)
+
         script_json = soup.find('script', {'type': 'application/ld+json'})
-        if script_json:
+        if script_json and script_json.string:
             dados = json.loads(script_json.string)
-            # O schema do ML pode vir como lista ou dicionário direto
             if isinstance(dados, list):
                 for item in dados:
                     if item.get('@type') == 'Product' or 'offers' in item:
                         return float(item['offers']['price'])
             elif dados.get('offers', {}).get('price'):
                 return float(dados['offers']['price'])
-                
-        raise ValueError("Preço não localizado na página do Mercado Livre.")
 
+        raise ValueError("Preco nao localizado na pagina do Mercado Livre.")
     except Exception as e:
-        # Repassa o erro exato para a tomada de decisão do robô
         raise RuntimeError(str(e))
 
 def atualizar_anuncio_na_plataforma(id_anuncio: str, novo_preco: float, pausar: bool = False):
     if pausar:
-        print(f"\n[⚠️ API MARKETPLACE] Bloqueando anúncio {id_anuncio} imediatamente.")
+        print(f"\n[API MARKETPLACE] Bloqueando anuncio {id_anuncio} imediatamente.")
     else:
-        print(f"\n[✅ API MARKETPLACE] Enviando atualização do anúncio {id_anuncio}. Novo preço de venda: R$ {novo_preco}")
+        print(f"\n[API MARKETPLACE] Atualizando anuncio {id_anuncio}. Novo preco: R$ {novo_preco}")
 
-@router.post("/verificar-cenario")
+# --- FUNCAO 2: VERIFICAR CENARIO ---
+@api_router.post("/vendas/verificar-cenario")
 async def verificar_e_vender(produto: ProdutoMonitorado):
-    print(f"\n[Robô] Iniciando varredura no Mercado Livre...")
-    
+    print(f"\n[Robo] Iniciando varredura no Mercado Livre...")
     try:
-        # O robô agora acessa o LINK REAL fornecido
         preco_real_fornecedor = extrair_preco_atual_fornecedor(str(produto.link_fornecedor))
-        
     except Exception as erro_cenario:
-        # Se der erro de estoque ou página caída, o robô toma a decisão mais segura: PAUSA O SEU ANÚNCIO
-        print(f"[Robô] Mudança crítica de cenário detectada: {erro_cenario}")
+        print(f"[Robo] Mudanca critica: {erro_cenario}")
+        # Chama o medico sem expor dados
+        diagnostico = chamar_medico_claude(
+            tipo_erro="Falha cenario fornecedor",
+            detalhe_erro=str(erro_cenario),
+            onde_aconteceu="vendas.py - verificar_e_vender"
+        )
+        await db.status_checks.insert_one({
+            "client_name": "Medico Claude",
+            "timestamp": datetime.now(timezone.utc),
+            "detail": f"DIAGNOSTICO CENARIO: {diagnostico}"
+        })
         atualizar_anuncio_na_plataforma(produto.id_anuncio_meu, 0, pausar=True)
-        return {
-            "status": "analisado_e_pausado",
-            "motivo": f"Inconsistência no fornecedor: {erro_cenario}. Seu anúncio foi pausado preventivamente."
-        }
+        return {"status": "analisado_e_pausado", "motivo": f"Inconsistencia no fornecedor: {erro_cenario}. Anuncio pausado."}
 
-    print(f"-> Preço de custo em banco: R$ {produto.preco_custo_atual}")
-    print(f"-> Preço real no Mercado Livre agora: R$ {preco_real_fornecedor}")
+    print(f"-> Custo banco: R$ {produto.preco_custo_atual}")
+    print(f"-> Preco real ML agora: R$ {preco_real_fornecedor}")
 
-    # Tomada de decisão inteligente baseada no preço real coletado
     if preco_real_fornecedor > produto.preco_custo_atual:
-        print("[Robô] O fornecedor aumentou o preço! Recalculando margens...")
         novo_preco_venda = round(preco_real_fornecedor * produto.markup, 2)
-        
-        # Aumento muito agressivo (mais de 30%): Pausa por segurança
         if preco_real_fornecedor > (produto.preco_custo_atual * 1.30):
             atualizar_anuncio_na_plataforma(produto.id_anuncio_meu, novo_preco_venda, pausar=True)
-            return {
-                "status": "analisado_e_pausado",
-                "motivo": "Aumento excessivo do fornecedor (>30%). Anúncio pausado para revisão manual.",
-                "preco_fornecedor_detectado": preco_real_fornecedor
-            }
-        
-        # Aumento leve: Atualiza o preço mantendo a venda ativa
+            return {"status": "analisado_e_pausado", "motivo": "Aumento >30%. Pausado para revisao.", "preco_fornecedor_detectado": preco_real_fornecedor}
         atualizar_anuncio_na_plataforma(produto.id_anuncio_meu, novo_preco_venda, pausar=False)
-        return {
-            "status": "cenario_atualizado",
-            "acao": "Preço reajustado no seu anúncio para manter a margem de lucro.",
-            "novo_preco_venda": novo_preco_venda
-        }
-
+        return {"status": "cenario_atualizado", "acao": "Preco reajustado.", "novo_preco_venda": novo_preco_venda}
     else:
-        # Cenário seguro (preço igual ou menor)
         preco_venda_normal = round(produto.preco_custo_atual * produto.markup, 2)
         atualizar_anuncio_na_plataforma(produto.id_anuncio_meu, preco_venda_normal, pausar=False)
-        return {
-            "status": "autorizado_para_venda",
-            "preco_venda_ativo": preco_venda_normal,
-            "preco_fornecedor_atual": preco_real_fornecedor
-        }
+        return {"status": "autorizado_para_venda", "preco_venda_ativo": preco_venda_normal, "preco_fornecedor_atual": preco_real_fornecedor}
+
+# --- FUNCAO 3: WEBHOOK VENDA ---
+@api_router.post("/webhook/venda-notificada")
+async def receber_e_processar_venda(notificacao: OrderWebhookInput):
+    if notificacao.status != "paid":
+        return {"status": "ignored", "message": "Apenas pagamento aprovado."}
+    ja_existe = await db.orders.find_one({"id_venda_origem": notificacao.resource_id})
+    if ja_existe:
+        return {"status": "ignored", "message": "Venda ja processada."}
+    produto_vinculado = await db.products.find_one({"id_interno": notificacao.item_id})
+    if not produto_vinculado:
+        produto_vinculado = await db.products.find_one({"remote_id": notificacao.item_id})
+    if not produto_vinculado:
+        diagnostico = chamar_medico_claude(
+            tipo_erro="Produto nao encontrado",
+            detalhe_erro=f"item_id={notificacao.item_id} nao achado",
+            onde_aconteceu="vendas.py - receber_e_processar_venda"
+        )
+        await db.status_checks.insert_one({"client_name": "Medico Claude", "timestamp": datetime.now(timezone.utc), "detail": f"DIAGNOSTICO: {diagnostico}"})
+        raise HTTPException(status_code=404, detail="Produto nao encontrado.")
+    link_fornecedor = produto_vinculado.get("link_fornecedor")
+    ordem = {
+        "id_venda_origem": notificacao.resource_id,
+        "link_compra_fornecedor": link_fornecedor,
+        "quantidade": notificacao.quantity,
+        "dados_cliente_final": notificacao.shipping_address.model_dump(),
+        "status_automacao": "Pendente - Pronto para Envio Automatico",
+        "data_captura": datetime.now(timezone.utc)
+    }
+    await db.orders.insert_one(ordem)
+    await db.status_checks.insert_one({"client_name": "Robo Despachante", "timestamp": datetime.now(timezone.utc), "detail": f"VENDA DETECTADA: Pedido {notificacao.resource_id} pronto para envio."})
+    return {"status": "success", "message": "Fulfillment iniciado.", "order_id": notificacao.resource_id}
