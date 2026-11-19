@@ -24,8 +24,19 @@ def extrair_preco_atual_fornecedor(url: str) -> float:
         resposta = requests.get(url, headers=headers, timeout=10)
         
         # Se o link mudou ou o produto sumiu (Erro 404), o cenário é crítico
-        if resposta.status_code == 404:
-            raise ValueError("Produto não encontrado (Erro 404).")
+            if not produto_vinculado:
+        # Chama o medico, sem mandar CPF ou nome do cliente
+        diagnostico = chamar_medico_claude(
+            tipo_erro="Produto nao encontrado",
+            detalhe_erro=f"item_id={notificacao.item_id} nao achado em products",
+            onde_aconteceu="vendas.py - receber_e_processar_venda"
+        )
+        await db.status_checks.insert_one({
+            "client_name": "Medico Claude",
+            "timestamp": datetime.now(timezone.utc),
+            "detail": f"DIAGNOSTICO: {diagnostico}"
+        })
+        raise HTTPException(status_code=404, detail="Produto vendido não encontrado no mapeamento do robô.")
             
         soup = BeautifulSoup(resposta.text, 'html.parser')
         
