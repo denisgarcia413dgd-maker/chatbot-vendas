@@ -3,7 +3,9 @@ import json
 from fastapi import APIRouter, HTTPException
 import requests
 from bs4 import BeautifulSoup
-from modelo_base import ProdutoMonitorado
+from medico import chamar_medico_claude
+
+# Modelos para simular a chegada de uma venda via Webhook
 
 router = APIRouter(prefix="/vendas", tags=["Automacao"])
 
