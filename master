@@ -1,3 +1,0 @@
-git add chatbot/
-git commit -m "Adiciona pasta do chatbot integrado ao Render"
-git push origin main
