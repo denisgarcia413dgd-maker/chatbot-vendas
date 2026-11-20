@@ -1,63 +1,25 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robô de Vendas</title>
-    <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 500px; margin: auto; }
-        h2 { color: #00e676; text-align: center; }
-        label { display: block; margin-top: 15px; font-size: 14px; color: #bbb; }
-        input { width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: #fff; box-sizing: border-box; font-size: 16px; }
-        button { width: 100%; padding: 15px; margin-top: 25px; background: #00e676; color: #000; font-weight: bold; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
-        button:active { background: #00c853; }
-        #resultado { margin-top: 20px; padding: 15px; border-radius: 8px; background: #1e1e1e; display: none; line-height: 1.5; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot de Vendas</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  </style>
 </head>
 <body>
-    <h2>🤖 Robô Dropshipping</h2>
-    
-    <label>ID do seu Anúncio</label>
-    <input type="text" id="id_anuncio" placeholder="Ex: MLB123456" value="MLB123456">
-
-    <label>Link do Fornecedor (Mercado Livre)</label>
-    <input type="url" id="link" placeholder="Cole o link do produto aqui...">
-
-    <label>Preço de Custo Atual (R$)</label>
-    <input type="number" id="custo" step="0.01" placeholder="Ex: 50.00">
-
-    <label>Multiplicador de Lucro (Markup)</label>
-    <input type="number" id="markup" step="0.1" value="1.5">
-
-    <button onclick="verificar()">Verificar Preço e Estoque</button>
-
-    <div id="resultado"></div>
-
-    <script>
-        async function verificar() {
-            const resDiv = document.getElementById('resultado');
-            resDiv.style.display = 'block';
-            resDiv.innerHTML = '⏳ Consultando Mercado Livre...';
-
-            const dados = {
-                id_anuncio_meu: document.getElementById('id_anuncio').value,
-                link_fornecedor: document.getElementById('link').value,
-                preco_custo_atual: parseFloat(document.getElementById('custo').value),
-                markup: parseFloat(document.getElementById('markup').value)
-            };
-
-            try {
-                const resposta = await fetch('/vendas/verificar-cenario', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dados)
-                });
-                const json = await resposta.json();
-                resDiv.innerHTML = '<strong>Resultado:</strong><br><pre style="white-space: pre-wrap;">' + JSON.stringify(json, null, 2) + '</pre>';
-            } catch (erro) {
-                resDiv.innerHTML = '❌ Erro ao conectar com o robô: ' + erro;
-            }
-        }
-    </script>
+  <iframe src="https://chatbot-vendas-l55c.onrender.com" title="Chatbot de Vendas"></iframe>
 </body>
 </html>
+
