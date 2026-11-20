@@ -1,40 +1,50 @@
-# servidor_mcp.py - MCP DO DEIVÃO
-# Deixa qualquer agente (Claude, Cursor) usar seu sistema de vendas
-# SEM ver suas chaves. As chaves ficam no Render, em Environment.
+# servidor_mcp.py - MCP DO DEIVAO - VERSAO CERTA PRO SEU vendas.py
+# Nao manda CPF, nao manda nome do cliente. So ID e preco.
 
 import os
 from mcp.server.fastmcp import FastMCP
-
-# Importa suas funções que já existem
-from vendas import buscar_produto, criar_pedido, verificar_status
+from vendas import extrair_preco_atual_fornecedor, ProdutoMonitorado
 from medico import chamar_medico_claude
 
 mcp = FastMCP("vendas-deivao")
 
 @mcp.tool()
-def listar_produto(nome: str) -> str:
-    """Lista um produto pelo nome. Use quando o cliente perguntar preço ou estoque."""
-    resultado = buscar_produto(nome)
-    if not resultado:
-        return f"Produto '{nome}' não encontrado. Vou chamar o médico."
-    return f"Produto: {resultado['nome']} | Preço: R$ {resultado['preco']} | Estoque: {resultado['estoque']}"
+def ver_preco_fornecedor(link_fornecedor: str) -> str:
+    """Ve o preco atual no link do fornecedor (Mercado Livre)."""
+    try:
+        preco = extrair_preco_atual_fornecedor(link_fornecedor)
+        return f"Preco atual no fornecedor: R$ {preco}"
+    except Exception as e:
+        return f"Erro ao ver preco: {e}"
 
 @mcp.tool()
-def criar_pedido_mcp(produto: str, cliente_id: str) -> str:
-    """Cria um pedido. NUNCA mande CPF ou nome do cliente aqui, só o ID."""
-    pedido = criar_pedido(produto, cliente_id)
-    return f"Pedido criado: {pedido['id']} | Status: {pedido['status']}"
+def verificar_cenario(id_anuncio_meu: str, link_fornecedor: str, preco_custo_atual: float, markup: float = 1.6) -> str:
+    """Verifica se o preco subiu, reajusta ou pausa o anuncio. Use quando for fazer varredura."""
+    try:
+        preco_real = extrair_preco_atual_fornecedor(link_fornecedor)
+        if preco_real > preco_custo_atual:
+            novo = round(preco_real * markup, 2)
+            if preco_real > (preco_custo_atual * 1.30):
+                return f"AUMENTO >30%. Custo era R$ {preco_custo_atual}, agora R$ {preco_real}. PAUSAR anuncio {id_anuncio_meu} para revisao."
+            return f"Reajustar anuncio {id_anuncio_meu} para R$ {novo}. Custo novo: R$ {preco_real}"
+        preco_normal = round(preco_custo_atual * markup, 2)
+        return f"Autorizado para venda. Preco ativo: R$ {preco_normal}. Fornecedor: R$ {preco_real}"
+    except Exception as e:
+        diag = chamar_medico_claude(
+            tipo_erro="Falha cenario fornecedor",
+            detalhe_erro=str(e),
+            onde_aconteceu="servidor_mcp.py - verificar_cenario"
+        )
+        return f"Fornecedor com problema: {e}. Diagnostico medico: {diag}"
 
 @mcp.tool()
-def verificar_pedido_mcp(pedido_id: str) -> str:
-    """Verifica o status de um pedido pelo ID."""
-    status = verificar_status(pedido_id)
-    return f"Pedido {pedido_id}: {status}"
-
-@mcp.tool()
-def chamar_medico(problema: str) -> str:
-    """Chama o médico (Claude) quando tem bug, produto sumido ou fornecedor com problema. Não mande dados do cliente."""
-    return chamar_medico_claude(problema)
+def chamar_medico(tipo_erro: str, detalhe_erro: str) -> str:
+    """Chama o medico Claude. NUNCA mande CPF ou nome do cliente, so tipo e detalhe."""
+    return chamar_medico_claude(
+        tipo_erro=tipo_erro,
+        detalhe_erro=detalhe_erro,
+        onde_aconteceu="servidor_mcp.py"
+    )
 
 if __name__ == "__main__":
     mcp.run()
