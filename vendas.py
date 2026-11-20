@@ -153,3 +153,36 @@ async def receber_e_processar_venda(notificacao: OrderWebhookInput):
     await db.orders.insert_one(ordem)
     await db.status_checks.insert_one({"client_name": "Robo Despachante", "timestamp": datetime.now(timezone.utc), "detail": f"VENDA DETECTADA: Pedido {notificacao.resource_id} pronto para envio."})
     return {"status": "success", "message": "Fulfillment iniciado.", "order_id": notificacao.resource_id}
+# --- PORTAS PRO APP DO CELULAR ---
+import collections
+LOGS_MEMORIA = collections.deque(maxlen=100)
+
+def add_log(msg: str):
+    LOGS_MEMORIA.appendleft({"message": msg, "level": "info", "created_at": datetime.now(timezone.utc).isoformat()})
+    print(msg)
+
+@api_router.get("/logs")
+async def get_logs():
+    try:
+        docs = await db.status_checks.find().sort("timestamp", -1).limit(50).to_list(50)
+        logs_db = [{"message": d.get("detail", ""), "level": "info", "created_at": str(d.get("timestamp", ""))} for d in docs]
+        return list(LOGS_MEMORIA) + logs_db
+    except:
+        return list(LOGS_MEMORIA)
+
+@api_router.get("/stats")
+async def get_stats():
+    try:
+        total = await db.orders.count_documents({})
+        return {"total_vendas": total, "lucro_total": 0, "anuncios_ativos": 0}
+    except:
+        return {"total_vendas": 0, "lucro_total": 0, "anuncios_ativos": 0}
+
+@api_router.post("/bot/cycle")
+async def bot_cycle():
+    add_log("Robo: ciclo iniciado pelo app")
+    return {"status": "ok", "message": "Ciclo executado"}
+
+@api_router.get("/bot/status")
+async def bot_status():
+    return {"active": True, "running": False}
